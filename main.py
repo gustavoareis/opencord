@@ -85,9 +85,9 @@ if player_clients or po_token:
 ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
 
 YOUTUBE_URL_RE = re.compile(r"^(https?://)?(www\.)?(youtube\.com|youtu\.be)/", re.IGNORECASE)
-SPOTIFY_TRACK_RE = re.compile(r"open\.spotify\.com/track/", re.IGNORECASE)
-SPOTIFY_PLAYLIST_RE = re.compile(r"open\.spotify\.com/playlist/", re.IGNORECASE)
-SPOTIFY_ALBUM_RE = re.compile(r"open\.spotify\.com/album/", re.IGNORECASE)
+SPOTIFY_TRACK_RE = re.compile(r"open\.spotify\.com/(?:[\w-]+/)?track/", re.IGNORECASE)
+SPOTIFY_PLAYLIST_RE = re.compile(r"open\.spotify\.com/(?:[\w-]+/)?playlist/", re.IGNORECASE)
+SPOTIFY_ALBUM_RE = re.compile(r"open\.spotify\.com/(?:[\w-]+/)?album/", re.IGNORECASE)
 
 MAX_SPOTIFY_ITEMS = 100
 
@@ -133,13 +133,22 @@ def spotify_track_to_query(track_obj: dict) -> str:
     artists = track_obj.get("artists") or []
     artist = (artists[0].get("name") or "").strip() if artists else ""
     q = f"{name} {artist}".strip()
-    return q if q else "unknown"
+    
+    # Remove caracteres especiais que podem causar problemas no YouTube
+    q = re.sub(r'[^\w\s\-\(\)]', '', q, flags=re.UNICODE)
+    q = re.sub(r'\s+', ' ', q).strip()
+    
+    result = q if q else "unknown"
+    print(f"[DEBUG] Spotify query gerada: '{result}' (nome: {name}, artista: {artist})")
+    return result
 
 
 def get_spotify_track_query(spotify_url: str) -> str | None:
     try:
         track_id = spotify_id_from_url(spotify_url)
+        print(f"[DEBUG] Track ID extraído: {track_id}")
         track = sp.track(track_id)
+        print(f"[DEBUG] Dados do Spotify recebidos: {track.get('name')} por {[a.get('name') for a in track.get('artists', [])]}")
         return spotify_track_to_query(track)
     except Exception as e:
         print(f"Erro ao acessar Spotify (track): {e}")
@@ -462,34 +471,47 @@ async def play(ctx, *, query: str):
     async with ctx.typing():
         try:
             if is_spotify_track_url(query):
+                print(f"[DEBUG] Detected Spotify TRACK url: {query}")
                 qstr = get_spotify_track_query(query)
+                print(f"[DEBUG] Query gerada do Spotify: {qstr}")
                 if not qstr:
                     await ctx.send("Erro ao buscar a música no Spotify.")
                     return
                 added = enqueue_search_strings(ctx, [qstr])
+                print(f"[DEBUG] Adicionado à fila: {qstr}")
 
             elif is_spotify_playlist_url(query):
+                print(f"[DEBUG] Detected Spotify PLAYLIST url: {query}")
                 qs = get_spotify_playlist_queries(query, limit=MAX_SPOTIFY_ITEMS)
+                print(f"[DEBUG] Queries geradas da playlist: {qs}")
                 if not qs:
                     await ctx.send("Não consegui ler essa playlist do Spotify.")
                     return
                 added = enqueue_search_strings(ctx, qs)
+                print(f"[DEBUG] Adicionados à fila: {qs}")
 
             elif is_spotify_album_url(query):
+                print(f"[DEBUG] Detected Spotify ALBUM url: {query}")
                 qs = get_spotify_album_queries(query, limit=MAX_SPOTIFY_ITEMS)
+                print(f"[DEBUG] Queries geradas do álbum: {qs}")
                 if not qs:
                     await ctx.send("Não consegui ler esse álbum do Spotify.")
                     return
                 added = enqueue_search_strings(ctx, qs)
+                print(f"[DEBUG] Adicionados à fila: {qs}")
 
             else:
                 if is_youtube_url(query):
                     yt_query = query
                 else:
                     yt_query = query  # texto; resolve como search dentro do enqueue_youtube
+                print(f"[DEBUG] Query para YouTube: {yt_query}")
                 added = await enqueue_youtube(ctx, yt_query)
 
         except Exception as e:
+            import traceback
+            print(f"[DEBUG][ERRO] Falha ao adicionar na fila: {e}")
+            traceback.print_exc()
             await ctx.send(f"Não consegui adicionar isso na fila: {e}")
             return
 
