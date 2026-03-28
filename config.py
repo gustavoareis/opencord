@@ -44,7 +44,7 @@ ytdl_format_options = {
         }
     },
 
-    "remote_components": "ejs:github",
+    "remote_components": ["ejs:github"],
 }
 
 ytdl_request_gap = float(os.getenv("YTDL_REQUEST_GAP", "2.0"))

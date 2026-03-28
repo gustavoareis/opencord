@@ -154,7 +154,9 @@ class Music(commands.Cog):
             def _after(err):
                 if err:
                     print(f"Erro no player: {err}")
-                self.bot.loop.create_task(self.start_playback_if_idle(ctx))
+                asyncio.run_coroutine_threadsafe(
+                    self.start_playback_if_idle(ctx), self.bot.loop
+                )
 
             vc.play(player, after=_after)
 
@@ -175,43 +177,31 @@ class Music(commands.Cog):
         async with ctx.typing():
             try:
                 if is_spotify_track_url(query):
-                    print(f"[DEBUG] Detected Spotify TRACK url: {query}")
                     result = get_spotify_track_query(query)
-                    print(f"[DEBUG] Query gerada do Spotify: {result}")
                     if not result:
                         await ctx.send("Erro ao buscar a música no Spotify.")
                         return
                     added = self.enqueue_search_strings(ctx, [result])
-                    print(f"[DEBUG] Adicionado à fila: {result}")
 
                 elif is_spotify_playlist_url(query):
-                    print(f"[DEBUG] Detected Spotify PLAYLIST url: {query}")
                     qs = get_spotify_playlist_queries(query, limit=MAX_SPOTIFY_ITEMS)
-                    print(f"[DEBUG] Queries geradas da playlist: {qs}")
                     if not qs:
                         await ctx.send("Não consegui ler essa playlist do Spotify.")
                         return
                     added = self.enqueue_search_strings(ctx, qs)
-                    print(f"[DEBUG] Adicionados à fila: {qs}")
 
                 elif is_spotify_album_url(query):
-                    print(f"[DEBUG] Detected Spotify ALBUM url: {query}")
                     qs = get_spotify_album_queries(query, limit=MAX_SPOTIFY_ITEMS)
-                    print(f"[DEBUG] Queries geradas do álbum: {qs}")
                     if not qs:
                         await ctx.send("Não consegui ler esse álbum do Spotify.")
                         return
                     added = self.enqueue_search_strings(ctx, qs)
-                    print(f"[DEBUG] Adicionados à fila: {qs}")
 
                 else:
-                    yt_query = query
-                    print(f"[DEBUG] Query para YouTube: {yt_query}")
-                    added = await self.enqueue_youtube(ctx, yt_query)
+                    added = await self.enqueue_youtube(ctx, query)
 
             except Exception as e:
                 import traceback
-                print(f"[DEBUG][ERRO] Falha ao adicionar na fila: {e}")
                 traceback.print_exc()
                 await ctx.send(f"Não consegui adicionar isso na fila: {e}")
                 return
