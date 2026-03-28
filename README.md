@@ -47,6 +47,20 @@ Um bot de música para Discord que toca músicas do YouTube e permite buscar fai
 - `.stop` — Para a música
 - `.leave` — Sai do canal de voz
 
+## Estrutura do Projeto
+```
+discord-bot/
+├── main.py              # Entrada: cria o bot e carrega os cogs
+├── config.py            # Configurações (ytdl, spotify, constantes)
+├── utils/
+│   ├── spotify.py       # Helpers do Spotify (track, playlist, álbum)
+│   └── youtube.py       # YTDLSource e helpers do YouTube
+├── cogs/
+│   └── music.py         # Comandos de música (Cog do discord.py)
+├── requirements.txt
+└── .env
+```
+
 ## Observações
 - O bot **não toca áudio diretamente do Spotify** (por restrições da API), apenas busca no YouTube
 - Para melhor funcionamento, mantenha o `yt-dlp` sempre atualizado
