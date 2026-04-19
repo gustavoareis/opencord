@@ -1,10 +1,10 @@
 import asyncio
-from collections import deque
+from collections import defaultdict, deque
 
 import discord
 from discord.ext import commands
 
-from config import MAX_SPOTIFY_ITEMS
+from config import MAX_PLAYLIST_ITEMS
 from utils.spotify import (
     is_spotify_track_url, is_spotify_playlist_url, is_spotify_album_url,
     get_spotify_track_query, get_spotify_playlist_queries, get_spotify_album_queries,
@@ -17,18 +17,14 @@ from utils.youtube import (
 class Music(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.guild_queues: dict[int, deque] = {}
+        self.guild_queues: defaultdict[int, deque] = defaultdict(deque)
         self.guild_now_playing: dict[int, dict] = {}
-        self.guild_locks: dict[int, asyncio.Lock] = {}
+        self.guild_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     def get_queue(self, guild_id: int) -> deque:
-        if guild_id not in self.guild_queues:
-            self.guild_queues[guild_id] = deque()
         return self.guild_queues[guild_id]
 
     def get_lock(self, guild_id: int) -> asyncio.Lock:
-        if guild_id not in self.guild_locks:
-            self.guild_locks[guild_id] = asyncio.Lock()
         return self.guild_locks[guild_id]
 
     async def ensure_voice(self, ctx) -> discord.VoiceClient | None:
@@ -65,8 +61,8 @@ class Music(commands.Cog):
             urls: list[str] = []
 
             for entry in entries:
-                if not entry:
-                    continue
+                if not entry or len(urls) >= MAX_PLAYLIST_ITEMS:
+                    break
                 watch = make_watch_url_from_entry(entry)
                 if watch:
                     urls.append(watch)
@@ -91,7 +87,7 @@ class Music(commands.Cog):
         display_title = item.get("display_title")
 
         if t == "search":
-            query = (item.get("query") or "").strip()
+            query = item.get("query", "").strip()
             if not query:
                 raise ValueError("Busca vazia.")
             data = await YTDLSource.extract_info(f"ytsearch1:{query}", loop=self.bot.loop)
@@ -105,7 +101,7 @@ class Music(commands.Cog):
             t = "ytwatch"
 
         if t == "ytwatch":
-            url = (item.get("url") or "").strip()
+            url = item.get("url", "").strip()
             if not url:
                 raise ValueError("URL vazia.")
             data = await YTDLSource.extract_info(url, loop=self.bot.loop)
@@ -184,14 +180,14 @@ class Music(commands.Cog):
                     added = self.enqueue_search_strings(ctx, [result])
 
                 elif is_spotify_playlist_url(query):
-                    qs = get_spotify_playlist_queries(query, limit=MAX_SPOTIFY_ITEMS)
+                    qs = get_spotify_playlist_queries(query, limit=MAX_PLAYLIST_ITEMS)
                     if not qs:
                         await ctx.send("Não consegui ler essa playlist do Spotify.")
                         return
                     added = self.enqueue_search_strings(ctx, qs)
 
                 elif is_spotify_album_url(query):
-                    qs = get_spotify_album_queries(query, limit=MAX_SPOTIFY_ITEMS)
+                    qs = get_spotify_album_queries(query, limit=MAX_PLAYLIST_ITEMS)
                     if not qs:
                         await ctx.send("Não consegui ler esse álbum do Spotify.")
                         return
@@ -201,8 +197,6 @@ class Music(commands.Cog):
                     added = await self.enqueue_youtube(ctx, query)
 
             except Exception as e:
-                import traceback
-                traceback.print_exc()
                 await ctx.send(f"Não consegui adicionar isso na fila: {e}")
                 return
 
@@ -213,8 +207,8 @@ class Music(commands.Cog):
         if added == 1:
             await ctx.send("Adicionado 1 item na fila.")
         else:
-            if added >= MAX_SPOTIFY_ITEMS and (is_spotify_playlist_url(query) or is_spotify_album_url(query)):
-                await ctx.send(f"Adicionados {added} itens na fila (limitado a {MAX_SPOTIFY_ITEMS}).")
+            if added >= MAX_PLAYLIST_ITEMS:
+                await ctx.send(f"Adicionados {added} itens na fila (limitado a {MAX_PLAYLIST_ITEMS}).")
             else:
                 await ctx.send(f"Adicionados {added} itens na fila.")
 

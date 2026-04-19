@@ -8,8 +8,7 @@ import discord
 
 from config import (
     ytdl, ffmpeg_options, YOUTUBE_URL_RE,
-    ytdl_request_gap, ytdl_request_jitter,
-    ytdl_max_retries, ytdl_backoff_base, ytdl_backoff_jitter,
+    ytdl_request_gap, ytdl_max_retries, ytdl_backoff_base,
 )
 
 _ytdl_lock = asyncio.Lock()
@@ -82,28 +81,12 @@ class YTDLSource(discord.PCMVolumeTransformer):
                     break
                 except Exception as e:
                     last_err = e
-                    msg = str(e).lower()
-                    transient = any(
-                        s in msg
-                        for s in (
-                            "rate-limited",
-                            "try again later",
-                            "http error 403",
-                            "http error 429",
-                            "http error 503",
-                            "temporarily",
-                            "timeout",
-                            "timed out",
-                        )
-                    )
-                    if attempt >= ytdl_max_retries or not transient:
+                    if attempt >= ytdl_max_retries:
                         break
-                    backoff = (ytdl_backoff_base ** (attempt - 1)) + random.uniform(
-                        0, ytdl_backoff_jitter
-                    )
+                    backoff = (ytdl_backoff_base ** (attempt - 1)) + random.uniform(0, 0.5)
                     await asyncio.sleep(backoff)
 
-            gap = max(0.0, ytdl_request_gap + random.uniform(0, ytdl_request_jitter))
+            gap = max(0.0, ytdl_request_gap + random.uniform(0, 1.0))
             _ytdl_next_allowed = time.monotonic() + gap
 
         if last_err is not None and data is None:

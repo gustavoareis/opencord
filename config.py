@@ -28,30 +28,18 @@ ytdl_format_options = {
     "quiet": True,
     "default_search": "ytsearch",
     "ignoreerrors": True,
-    "retries": 3,
-    "fragment_retries": 3,
-    "extractor_retries": 3,
     "sleep_interval": 1,
     "max_sleep_interval": 3,
-
-    "js_runtimes": {
-        "node": {}
-    },
-
     "extractor_args": {
         "youtube": {
             "player_client": ["android", "web"],
         }
     },
-
-    "remote_components": ["ejs:github"],
 }
 
 ytdl_request_gap = float(os.getenv("YTDL_REQUEST_GAP", "2.0"))
-ytdl_request_jitter = float(os.getenv("YTDL_REQUEST_JITTER", "1.0"))
 ytdl_max_retries = int(os.getenv("YTDL_MAX_RETRIES", "3"))
 ytdl_backoff_base = float(os.getenv("YTDL_BACKOFF_BASE", "2.0"))
-ytdl_backoff_jitter = float(os.getenv("YTDL_BACKOFF_JITTER", "0.5"))
 
 ytdl_format_options["retries"] = ytdl_max_retries
 ytdl_format_options["fragment_retries"] = ytdl_max_retries
@@ -76,4 +64,4 @@ SPOTIFY_TRACK_RE = re.compile(r"open\.spotify\.com/(?:[\w-]+/)?track/", re.IGNOR
 SPOTIFY_PLAYLIST_RE = re.compile(r"open\.spotify\.com/(?:[\w-]+/)?playlist/", re.IGNORECASE)
 SPOTIFY_ALBUM_RE = re.compile(r"open\.spotify\.com/(?:[\w-]+/)?album/", re.IGNORECASE)
 
-MAX_SPOTIFY_ITEMS = 100
+MAX_PLAYLIST_ITEMS = 100

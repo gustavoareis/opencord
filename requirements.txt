@@ -3,5 +3,4 @@ python-dotenv
 yt-dlp
 spotipy
 pynacl
-davey
 groq

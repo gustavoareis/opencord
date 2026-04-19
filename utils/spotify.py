@@ -1,6 +1,6 @@
 import re
 
-from config import sp, SPOTIFY_TRACK_RE, SPOTIFY_PLAYLIST_RE, SPOTIFY_ALBUM_RE, MAX_SPOTIFY_ITEMS
+from config import sp, SPOTIFY_TRACK_RE, SPOTIFY_PLAYLIST_RE, SPOTIFY_ALBUM_RE, MAX_PLAYLIST_ITEMS
 
 
 def spotify_id_from_url(url: str) -> str:
@@ -26,29 +26,23 @@ def spotify_track_to_query(track_obj: dict) -> tuple[str, str]:
     artist = artist_names[0] if artist_names else ""
     q = f"{name} {artist}".strip()
 
-    # Remove caracteres especiais que podem causar problemas no YouTube
     q = re.sub(r'[^\w\s\-\(\)]', '', q, flags=re.UNICODE)
     q = re.sub(r'\s+', ' ', q).strip()
 
     result = q if q else "unknown"
     display = f"{name} - {', '.join(artist_names)}" if name and artist_names else name or "unknown"
-    print(f"[DEBUG] Spotify query gerada: '{result}' (nome: {name}, artista: {artist})")
     return result, display
 
 
 def get_spotify_track_query(spotify_url: str) -> tuple[str, str] | None:
     try:
-        track_id = spotify_id_from_url(spotify_url)
-        print(f"[DEBUG] Track ID extraído: {track_id}")
-        track = sp.track(track_id)
-        print(f"[DEBUG] Dados do Spotify recebidos: {track.get('name')} por {[a.get('name') for a in track.get('artists', [])]}")
+        track = sp.track(spotify_id_from_url(spotify_url))
         return spotify_track_to_query(track)
-    except Exception as e:
-        print(f"Erro ao acessar Spotify (track): {e}")
+    except Exception:
         return None
 
 
-def get_spotify_playlist_queries(spotify_url: str, limit: int = MAX_SPOTIFY_ITEMS) -> list[tuple[str, str]] | None:
+def get_spotify_playlist_queries(spotify_url: str, limit: int = MAX_PLAYLIST_ITEMS) -> list[tuple[str, str]] | None:
     try:
         playlist_id = spotify_id_from_url(spotify_url)
         out: list[tuple[str, str]] = []
@@ -81,12 +75,11 @@ def get_spotify_playlist_queries(spotify_url: str, limit: int = MAX_SPOTIFY_ITEM
                 break
 
         return [(q, d) for q, d in out if q and q != "unknown"]
-    except Exception as e:
-        print(f"Erro ao acessar Spotify (playlist): {e}")
+    except Exception:
         return None
 
 
-def get_spotify_album_queries(spotify_url: str, limit: int = MAX_SPOTIFY_ITEMS) -> list[tuple[str, str]] | None:
+def get_spotify_album_queries(spotify_url: str, limit: int = MAX_PLAYLIST_ITEMS) -> list[tuple[str, str]] | None:
     try:
         album_id = spotify_id_from_url(spotify_url)
         out: list[tuple[str, str]] = []
@@ -111,6 +104,5 @@ def get_spotify_album_queries(spotify_url: str, limit: int = MAX_SPOTIFY_ITEMS) 
                 break
 
         return [(q, d) for q, d in out if q and q != "unknown"]
-    except Exception as e:
-        print(f"Erro ao acessar Spotify (album): {e}")
+    except Exception:
         return None
