@@ -6,7 +6,8 @@ from collections import defaultdict, deque
 import discord
 from discord.ext import commands
 
-from config import ytdl, FFMPEG_OPTIONS, YOUTUBE_RE, MAX_PLAYLIST_ITEMS
+from config import FFMPEG_OPTIONS, MAX_PLAYLIST_ITEMS
+from utils.youtube import ytdl, is_youtube_url, is_playlist_url
 from utils.spotify import (
     is_spotify_track_url, is_spotify_playlist_url, is_spotify_album_url,
     get_spotify_track_query, get_spotify_playlist_queries, get_spotify_album_queries,
@@ -15,14 +16,6 @@ from utils.spotify import (
 _ytdl_lock = asyncio.Lock()
 _ytdl_next_call = 0.0
 _REQUEST_GAP = 2.0
-
-
-def _is_youtube_url(text: str) -> bool:
-    return bool(YOUTUBE_RE.match(text.strip()))
-
-
-def _is_playlist_url(url: str) -> bool:
-    return "list=" in url
 
 
 def _watch_url(entry: dict) -> str | None:
@@ -78,12 +71,35 @@ async def _resolve(item: dict) -> dict:
     return data
 
 
+IDLE_TIMEOUT = 300
+QUEUE_DISPLAY_LIMIT = 10
+
+
 class Music(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.queues: defaultdict[int, deque] = defaultdict(deque)
         self.now_playing: dict[int, dict] = {}
         self.locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._idle_tasks: dict[int, asyncio.Task] = {}
+
+    def _cancel_idle(self, guild_id: int):
+        task = self._idle_tasks.pop(guild_id, None)
+        if task:
+            task.cancel()
+
+    def _start_idle(self, guild_id: int):
+        self._cancel_idle(guild_id)
+        self._idle_tasks[guild_id] = asyncio.create_task(self._idle_disconnect(guild_id))
+
+    async def _idle_disconnect(self, guild_id: int):
+        await asyncio.sleep(IDLE_TIMEOUT)
+        guild = self.bot.get_guild(guild_id)
+        if guild and guild.voice_client and guild.voice_client.is_connected():
+            if not guild.voice_client.is_playing() and not guild.voice_client.is_paused():
+                self.queues[guild_id].clear()
+                self.now_playing.pop(guild_id, None)
+                await guild.voice_client.disconnect()
 
     def _enqueue(self, guild_id: int, query: str, display: str | None = None):
         self.queues[guild_id].append({"query": query, "display": display})
@@ -123,7 +139,7 @@ class Music(commands.Cog):
                 self._enqueue(ctx.guild.id, q, d)
             return len(tracks)
 
-        if _is_youtube_url(query) and _is_playlist_url(query):
+        if is_youtube_url(query) and is_playlist_url(query):
             data = await _extract_info(query)
             entries = [e for e in (data.get("entries") or []) if e]
             urls = [u for e in entries[:MAX_PLAYLIST_ITEMS] if (u := _watch_url(e))]
@@ -154,7 +170,10 @@ class Music(commands.Cog):
                     await ctx.send(f"Pulando item (erro): {e}")
             else:
                 self.now_playing.pop(ctx.guild.id, None)
+                self._start_idle(ctx.guild.id)
                 return
+
+            self._cancel_idle(ctx.guild.id)
 
             def after(err):
                 if err:
@@ -166,6 +185,19 @@ class Music(commands.Cog):
             url = data.get("webpage_url")
             msg = f"Tocando agora: [{title}](<{url}>)" if url else f"Tocando agora: {title}"
             await ctx.send(msg)
+
+    @commands.command(name="join")
+    async def join(self, ctx):
+        if not ctx.author.voice or not ctx.author.voice.channel:
+            await ctx.send("Entre em um canal de voz primeiro.")
+            return
+        channel = ctx.author.voice.channel
+        if ctx.voice_client and ctx.voice_client.is_connected():
+            await ctx.voice_client.move_to(channel)
+        else:
+            await channel.connect()
+        self._start_idle(ctx.guild.id)
+        await ctx.send(f"Entrei em **{channel.name}**.")
 
     @commands.command(name="play")
     async def play(self, ctx, *, query: str):
@@ -205,10 +237,10 @@ class Music(commands.Cog):
             return
 
         lines.append("Fila:")
-        for i, item in enumerate(list(q)[:10], 1):
+        for i, item in enumerate(list(q)[:QUEUE_DISPLAY_LIMIT], 1):
             lines.append(f"{i}. {item.get('display') or item.get('query') or 'Sem título'}")
-        if len(q) > 10:
-            lines.append(f"... e mais {len(q) - 10} item(ns).")
+        if len(q) > QUEUE_DISPLAY_LIMIT:
+            lines.append(f"... e mais {len(q) - QUEUE_DISPLAY_LIMIT} item(ns).")
         await ctx.send("\n".join(lines))
 
     @commands.command(name="skip")
@@ -219,7 +251,7 @@ class Music(commands.Cog):
             return
         if vc.is_playing() or vc.is_paused():
             vc.stop()
-            await ctx.send("Pulando...")
+            await ctx.send("Pulando")
         else:
             await ctx.send("Nada tocando agora.")
 
@@ -264,6 +296,7 @@ class Music(commands.Cog):
         if not ctx.voice_client or not ctx.voice_client.is_connected():
             await ctx.send("Não estou em canal de voz.")
             return
+        self._cancel_idle(ctx.guild.id)
         self.queues[ctx.guild.id].clear()
         self.now_playing.pop(ctx.guild.id, None)
         await ctx.voice_client.disconnect()

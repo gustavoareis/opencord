@@ -4,11 +4,18 @@ Bot de Discord com módulos de música e IA.
 
 ## Funcionalidades
 
-### Música
-Reproduz áudio em canais de voz com suporte a YouTube e Spotify.
+### Geral
 
 | Comando | Descrição |
 |---|---|
+| `.salve` | Cumprimento do bot |
+
+### Música
+Reproduz áudio em canais de voz com suporte a YouTube e Spotify. O bot desconecta automaticamente após 5 minutos sem tocar nada.
+
+| Comando | Descrição |
+|---|---|
+| `.join` | Entra no canal de voz do usuário |
 | `.play <query>` | Toca uma música ou adiciona à fila (YouTube, Spotify ou busca por texto) |
 | `.queue` | Exibe a fila atual e o que está tocando |
 | `.skip` | Pula para a próxima música |

@@ -1,4 +1,19 @@
-from config import sp, SPOTIFY_TRACK_RE, SPOTIFY_PLAYLIST_RE, SPOTIFY_ALBUM_RE, MAX_PLAYLIST_ITEMS
+import os
+import re
+
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+
+from config import MAX_PLAYLIST_ITEMS
+
+sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+    client_id=os.getenv("SPOTIPY_CLIENT_ID"),
+    client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
+))
+
+SPOTIFY_TRACK_RE = re.compile(r"open\.spotify\.com/(?:[\w-]+/)?track/", re.IGNORECASE)
+SPOTIFY_PLAYLIST_RE = re.compile(r"open\.spotify\.com/(?:[\w-]+/)?playlist/", re.IGNORECASE)
+SPOTIFY_ALBUM_RE = re.compile(r"open\.spotify\.com/(?:[\w-]+/)?album/", re.IGNORECASE)
 
 
 def _spotify_id(url: str) -> str:
@@ -11,6 +26,27 @@ def _track_to_query(track: dict) -> tuple[str, str]:
     query = f"{name} {artists[0]}".strip() if artists else name
     display = f"{name} - {', '.join(artists)}" if name and artists else name
     return query or "unknown", display or "unknown"
+
+
+def _paginate_tracks(fetch_fn, extract_fn, limit: int) -> list[tuple[str, str]]:
+    out, offset = [], 0
+    while len(out) < limit:
+        resp = fetch_fn(offset, limit - len(out))
+        items = resp.get("items") or []
+        if not items:
+            break
+        for item in items:
+            track = extract_fn(item)
+            if track:
+                q, d = _track_to_query(track)
+                if q != "unknown":
+                    out.append((q, d))
+            if len(out) >= limit:
+                break
+        offset += len(items)
+        if not resp.get("next"):
+            break
+    return out
 
 
 def is_spotify_track_url(url: str) -> bool:
@@ -33,52 +69,24 @@ def get_spotify_track_query(url: str) -> tuple[str, str] | None:
 
 
 def get_spotify_playlist_queries(url: str, limit: int = MAX_PLAYLIST_ITEMS) -> list[tuple[str, str]]:
+    sid = _spotify_id(url)
     try:
-        out, offset = [], 0
-        while len(out) < limit:
-            resp = sp.playlist_items(
-                _spotify_id(url),
-                limit=min(100, limit - len(out)),
-                offset=offset,
-                additional_types=("track",),
-            )
-            items = resp.get("items") or []
-            if not items:
-                break
-            for it in items:
-                track = (it or {}).get("track")
-                if track and not track.get("is_local"):
-                    q, d = _track_to_query(track)
-                    if q != "unknown":
-                        out.append((q, d))
-                if len(out) >= limit:
-                    break
-            offset += len(items)
-            if not resp.get("next"):
-                break
-        return out
+        return _paginate_tracks(
+            lambda offset, remaining: sp.playlist_items(sid, limit=min(100, remaining), offset=offset, additional_types=("track",)),
+            lambda item: track if (track := (item or {}).get("track")) and not track.get("is_local") else None,
+            limit,
+        )
     except Exception:
         return []
 
 
 def get_spotify_album_queries(url: str, limit: int = MAX_PLAYLIST_ITEMS) -> list[tuple[str, str]]:
+    sid = _spotify_id(url)
     try:
-        out, offset = [], 0
-        while len(out) < limit:
-            resp = sp.album_tracks(_spotify_id(url), limit=min(50, limit - len(out)), offset=offset)
-            items = resp.get("items") or []
-            if not items:
-                break
-            for track in items:
-                if track:
-                    q, d = _track_to_query(track)
-                    if q != "unknown":
-                        out.append((q, d))
-                if len(out) >= limit:
-                    break
-            offset += len(items)
-            if not resp.get("next"):
-                break
-        return out
+        return _paginate_tracks(
+            lambda offset, remaining: sp.album_tracks(sid, limit=min(50, remaining), offset=offset),
+            lambda item: item,
+            limit,
+        )
     except Exception:
         return []
